@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Chiptool</title>
+		<meta name="viewport" content="width=device-width, user-scalable=no">
+	</head>
+	<body>
+		<script>
+			~function(){var
+			w=self,d=document,b=d.body,c=b.appendChild(d.createElement("canvas")),
+			_="equestAnimationFrame",n=w["r"+_]||w["webkitR"+_]||w["mozR"+_]||setTimeout,p,i,k
+			canvas=c;ctx=c.getContext("2d")
+			b.style.overflow="hidden";b.style.margin=0;(onresize=function(){c.width=innerWidth,c.height=innerHeight})()
+			animate=function a(f){f(),n(function(){a(f)})}
+			for(p=Object.getOwnPropertyNames(Math),i=0;k=p[i];i++){w[k]=Math[k]}TAU=PI*2}()
+		</script>
+		<script src="lib/pep.js"></script>
+		<script src="lib/teoria.js"></script>
+		<script src="lib/coffee-script.js"></script>
+		<script src="src/app.coffee" type="text/coffeescript"></script>
+	</body>
+</html>
