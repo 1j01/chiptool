@@ -1,6 +1,5 @@
 
-a4 = teoria.note "c#4"
-scale = a4.scale("lydian").notes()
+scale = teoria.note("c#4").scale("lydian")
 
 audioContext = new AudioContext()
 #master = audioContext.createGain()
@@ -8,6 +7,31 @@ audioContext = new AudioContext()
 #master.connect audioContext.destination
 
 @song = new Array 500
+
+LS_KEY = "chiptool song data"
+
+# TODO: just store midi numbers instead of Note objects
+# and avoid serialization complexity
+try
+	json = localStorage.getItem(LS_KEY)
+	if json
+		data = JSON.parse(json)
+		if data
+			@song = []
+			for datum in data
+				if datum
+					@song.push({
+						n1: teoria.note(datum.n1),
+						n2: teoria.note(datum.n2),
+					})
+				else
+					song.push(null)
+catch err
+	console.warn err
+
+save = ->
+	teoria.Note::toJSON = teoria.Note::toString
+	localStorage.setItem(LS_KEY, JSON.stringify(song))
 
 playing = no
 
@@ -55,6 +79,8 @@ document.body.addEventListener "pointermove", (e)->
 				if song[xi]
 					song[xi].n2 = note_at_pointer_y
 			
+			save()
+			
 			pointer.last_note = note_at_pointer_y
 			pointer.last_x = x
 
@@ -68,6 +94,7 @@ document.body.addEventListener "pointerdown", (e)->
 	if note_at_pointer_y
 		
 		song[x // x_scale] = n1: note_at_pointer_y, n2: note_at_pointer_y
+		save()
 		
 		osc = audioContext.createOscillator()
 		gain = audioContext.createGain()
@@ -136,7 +163,8 @@ play = ->
 		if position
 			{n1, n2} = position
 			prev_position = song[i - 1]
-			if prev_position and prev_position.n2 is n1
+			# TODO: allow explicit reactuation
+			if prev_position and prev_position.n2.midi() is n1.midi()
 				{osc, gain} = playback[playback.length - 1]
 				# cancel the note fading out
 				gain.gain.cancelScheduledValues time - 0.2
@@ -147,9 +175,8 @@ play = ->
 				gain.gain.linearRampToValueAtTime 0.0001, time + 0.99
 				# bend the pitch
 				osc.frequency.setValueAtTime n1.fq(), time
-				#osc.frequency.exponentialRampToValueAtTime n1.fq(), time + 0.1
+				# TODO: glide for less than note_length
 				osc.frequency.exponentialRampToValueAtTime n2.fq(), time + note_length
-				#osc.frequency.linearRampToValueAtTime n2.fq(), time + 1
 			else
 				osc = audioContext.createOscillator()
 				gain = audioContext.createGain()
@@ -157,12 +184,10 @@ play = ->
 				osc.type = "triangle"
 				osc.connect gain
 				gain.connect audioContext.destination
-				
-				#osc.frequency.value = n1.fq()
-				#setTimeout -> osc.frequency.value = n2.fq()
-				#setTimeout (-> osc.frequency.value = n2.fq()), 1000 * note_length/2
+				# TODO: DRY
 				osc.frequency.setValueAtTime n1.fq(), time
 				osc.frequency.exponentialRampToValueAtTime n2.fq(), time + note_length
+				
 				osc.start time
 				gain.gain.cancelScheduledValues time
 				gain.gain.linearRampToValueAtTime 0.001, time
@@ -194,28 +219,28 @@ window.addEventListener "keydown", (e)->
 			play()
 
 note_at = (y)->
-	scale[~~((1 - y / canvas.height) * scale.length)]
+	# scale.get(~~((1 - y / canvas.height) * scale.notes().length))
+	scale_notes = scale.notes()
+	scale_notes[~~((1 - y / canvas.height) * scale_notes.length)]
 y_for_note_i = (i)->
-	(i + 0.5) / scale.length * canvas.height
+	(i + 0.5) / scale.notes().length * canvas.height
 y_for_note = (note)->
-	y_for_note_i scale.length - 1  - (scale.indexOf note)
+	simple = scale.simple()
+	y_for_note_i(simple.length - 1 - (simple.indexOf(note.toString(true))))
+	# y_for_note_i(simple.length - (simple.indexOf(note.toString(true))))
 
 lerp = (v1, v2, x)->
 	v1 + (v2 - v1) * x
 
-t = 0
 animate ->
-	t += 0.1
-	
-	{width: w, height: h} = canvas
 	
 	ctx.fillStyle = "black"
-	ctx.fillRect 0, 0, w, h
+	ctx.fillRect 0, 0, canvas.width, canvas.height
 	
 	ctx.save()
 	
 	ctx.beginPath()
-	for note, i in scale
+	for note, i in scale.notes()
 		y = y_for_note_i i
 		ctx.moveTo 0, y
 		ctx.lineTo canvas.width, y
@@ -237,6 +262,7 @@ animate ->
 		#ctx.bezierCurveTo lerp(x1, x2, 0.3), y1, lerp(x1, x2, 0.4), y2, x2, y2
 		#ctx.bezierCurveTo lerp(x1, x2, 0.2), y1, lerp(x1, x2, 0.4), y2, x2, y2
 	ctx.strokeStyle = "rgba(0, 255, 0, 1)"
+	ctx.lineCap = "round"
 	ctx.lineWidth = 3
 	ctx.stroke()
 	
