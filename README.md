@@ -52,15 +52,16 @@ and didn't want to have to manually shift everything over in each pattern.
 
 boring todo:
 
-* undo/redo
 * right click to delete
 * adjust default glide to be more like 0.2s rather than the length of a note
 * import/export JSON
 * versioned and automatically upgraded format
 * playback control other than play/stop
+* update song during playback
 * multiple concurrent synths
 * synth parameters
 * support for touch-only interaction for mobile devices
+* scrolling/zooming (panning with two fingers for touch)
 
 vague todo:
 

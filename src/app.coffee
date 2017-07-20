@@ -6,32 +6,49 @@ audioContext = new AudioContext()
 #master.gain.value = 0
 #master.connect audioContext.destination
 
+# TODO: versioned document format
 @song = new Array 500
 
 LS_KEY = "chiptool song data"
 
-# TODO: just store midi numbers instead of Note objects
-# and avoid serialization complexity
-try
-	json = localStorage.getItem(LS_KEY)
-	if json
-		data = JSON.parse(json)
-		if data
-			@song = []
-			for datum in data
-				if datum
-					@song.push({
-						n1: teoria.note(datum.n1),
-						n2: teoria.note(datum.n2),
-					})
-				else
-					song.push(null)
-catch err
-	console.warn err
+@state_changed = ->
+	# TODO: update playback here
+	try
+		save()
+	catch err
+		console.warn err
+		# TODO: warn user
+
+@get_state = ->
+	teoria.Note::toJSON = teoria.Note::toString
+	JSON.stringify(song)
+
+@set_state = (song_json)->
+	# TODO: just store midi numbers instead of Note objects
+	# and avoid serialization complexity
+	try
+		if song_json
+			data = JSON.parse(song_json)
+			if data
+				@song = []
+				for datum in data
+					if datum
+						@song.push({
+							n1: teoria.note(datum.n1),
+							n2: teoria.note(datum.n2),
+						})
+					else
+						song.push(null)
+	catch err
+		console.warn err
+		# TODO: warn user
+	state_changed()
+
+load = ->
+	set_state(localStorage.getItem(LS_KEY))
 
 save = ->
-	teoria.Note::toJSON = teoria.Note::toString
-	localStorage.setItem(LS_KEY, JSON.stringify(song))
+	localStorage.setItem(LS_KEY, get_state())
 
 playing = no
 
@@ -79,7 +96,7 @@ document.body.addEventListener "pointermove", (e)->
 				if song[xi]
 					song[xi].n2 = note_at_pointer_y
 			
-			save()
+			state_changed()
 			
 			pointer.last_note = note_at_pointer_y
 			pointer.last_x = x
@@ -93,8 +110,8 @@ document.body.addEventListener "pointerdown", (e)->
 	
 	if note_at_pointer_y
 		
-		song[x // x_scale] = n1: note_at_pointer_y, n2: note_at_pointer_y
-		save()
+		undoable =>
+			song[x // x_scale] = n1: note_at_pointer_y, n2: note_at_pointer_y
 		
 		osc = audioContext.createOscillator()
 		gain = audioContext.createGain()
@@ -133,7 +150,7 @@ pointerstop = (e)->
 			osc.stop 0
 		, 1500
 window.addEventListener "pointerup", pointerstop
-window.addEventListener "pointercancel", pointerstop
+window.addEventListener "pointercancel", pointerstop # TODO: cancel edit
 
 document.body.addEventListener "pointerout", (e)->
 	delete pointers[e.pointerId]
@@ -212,14 +229,37 @@ stop = ->
 	playing = no
 
 window.addEventListener "keydown", (e)->
-	if e.keyCode is 32
-		if playing
-			stop()
-		else
-			play()
+	key = (e.key ? String.fromCharCode(e.keyCode)).toUpperCase()
+	if e.ctrlKey
+		switch key
+			when "Z"
+				if e.shiftKey then redo() else undo()
+			when "Y"
+				redo()
+			#when "A"
+				#select_all()
+			else
+				return # don't prevent default
+	else
+		switch e.keyCode
+			when 32 # Space
+				if playing
+					stop()
+				else
+					play()
+			#when 27 # Escape
+				#deselect() if selection
+			#when 13 # Enter
+				#deselect() if selection
+			when 115 # F4
+				redo()
+			#when 46 # Delete
+				#delete_selected()
+			else
+				return # don't prevent default
+	e.preventDefault()
 
 note_at = (y)->
-	# scale.get(~~((1 - y / canvas.height) * scale.notes().length))
 	scale_notes = scale.notes()
 	scale_notes[~~((1 - y / canvas.height) * scale_notes.length)]
 y_for_note_i = (i)->
@@ -227,7 +267,6 @@ y_for_note_i = (i)->
 y_for_note = (note)->
 	simple = scale.simple()
 	y_for_note_i(simple.length - 1 - (simple.indexOf(note.toString(true))))
-	# y_for_note_i(simple.length - (simple.indexOf(note.toString(true))))
 
 lerp = (v1, v2, x)->
 	v1 + (v2 - v1) * x
@@ -290,3 +329,5 @@ animate ->
 			ctx.fill()
 	
 	ctx.restore()
+
+load()
