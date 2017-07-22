@@ -4,7 +4,6 @@
 
 @undoable = (action)=>
 	redos.length = 0
-	console.log redos
 	
 	undos.push(get_state())
 	
