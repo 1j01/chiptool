@@ -1,5 +1,10 @@
 
 scale = teoria.note("c#4").scale("lydian")
+scale_notes = scale.notes()
+scale_note_midis = (note.midi() for note in scale_notes)
+
+midi_to_freq = (midi)->
+	teoria.note.fromMIDI(midi).fq()
 
 audioContext = new AudioContext()
 #master = audioContext.createGain()
@@ -20,25 +25,16 @@ LS_KEY = "chiptool song data"
 		# TODO: warn user
 
 @get_state = ->
-	teoria.Note::toJSON = teoria.Note::toString
 	JSON.stringify(song)
 
 @set_state = (song_json)->
-	# TODO: just store midi numbers instead of Note objects
-	# and avoid serialization complexity
 	try
 		if song_json
 			data = JSON.parse(song_json)
 			if data
-				@song = []
-				for datum in data
-					if datum
-						@song.push({
-							n1: teoria.note(datum.n1),
-							n2: teoria.note(datum.n2),
-						})
-					else
-						song.push(null)
+				# TODO: validation
+				@song = data
+				
 	catch err
 		console.warn err
 		# TODO: warn user
@@ -76,9 +72,9 @@ document.body.addEventListener "pointermove", (e)->
 		pointer.x = x
 		pointer.y = y
 		{gain, osc} = pointer
-		note_at_pointer_y = note_at y
-		if note_at_pointer_y
-			new_freq = note_at_pointer_y.fq()
+		note_midi_at_pointer_y = note_midi_at y
+		if note_midi_at_pointer_y
+			new_freq = midi_to_freq(note_midi_at_pointer_y)
 			
 			xi = x // x_scale
 			last_xi = pointer.last_x // x_scale
@@ -86,19 +82,19 @@ document.body.addEventListener "pointermove", (e)->
 			if xi isnt last_xi
 				for _xi_ in [xi...last_xi]
 					song[_xi_] =
-						n1: pointer.last_note
-						n2: pointer.last_note
+						n1: pointer.last_note_midi
+						n2: pointer.last_note_midi
 			
 			if new_freq isnt pointer.last_freq
 				pointer.last_freq = new_freq
 				osc.frequency.value = new_freq
 				
 				if song[xi]
-					song[xi].n2 = note_at_pointer_y
+					song[xi].n2 = note_midi_at_pointer_y
 			
 			state_changed()
 			
-			pointer.last_note = note_at_pointer_y
+			pointer.last_note_midi = note_midi_at_pointer_y
 			pointer.last_x = x
 
 document.body.addEventListener "pointerdown", (e)->
@@ -106,12 +102,14 @@ document.body.addEventListener "pointerdown", (e)->
 	return if pressed[e.pointerId]
 	x = e.clientX
 	y = e.clientY
-	note_at_pointer_y = note_at y
+	note_midi_at_pointer_y = note_midi_at y
 	
-	if note_at_pointer_y
+	if note_midi_at_pointer_y
 		
 		undoable =>
-			song[x // x_scale] = n1: note_at_pointer_y, n2: note_at_pointer_y
+			song[x // x_scale] =
+				n1: note_midi_at_pointer_y
+				n2: note_midi_at_pointer_y
 		
 		osc = audioContext.createOscillator()
 		gain = audioContext.createGain()
@@ -120,9 +118,9 @@ document.body.addEventListener "pointerdown", (e)->
 		osc.connect gain
 		gain.connect audioContext.destination
 		
-		freq = last_freq = note_at_pointer_y.fq()
+		freq = last_freq = midi_to_freq(note_midi_at_pointer_y)
 		
-		pointer = pressed[e.pointerId] = {x, y, gain, osc, last_freq, last_x: x, last_note: note_at_pointer_y}
+		pointer = pressed[e.pointerId] = {x, y, gain, osc, last_freq, last_x: x, last_note: note_midi_at_pointer_y}
 		
 		time = audioContext.currentTime
 		
@@ -181,7 +179,7 @@ play = ->
 			{n1, n2} = position
 			prev_position = song[i - 1]
 			# TODO: allow explicit reactuation
-			if prev_position and prev_position.n2.midi() is n1.midi()
+			if prev_position and prev_position.n2 is n1
 				{osc, gain} = playback[playback.length - 1]
 				# cancel the note fading out
 				gain.gain.cancelScheduledValues time - 0.2
@@ -191,9 +189,9 @@ play = ->
 				gain.gain.exponentialRampToValueAtTime 0.01, time + 0.9
 				gain.gain.linearRampToValueAtTime 0.0001, time + 0.99
 				# bend the pitch
-				osc.frequency.setValueAtTime n1.fq(), time
+				osc.frequency.setValueAtTime midi_to_freq(n1), time
 				# TODO: glide for less than note_length
-				osc.frequency.exponentialRampToValueAtTime n2.fq(), time + note_length
+				osc.frequency.exponentialRampToValueAtTime midi_to_freq(n2), time + note_length
 			else
 				osc = audioContext.createOscillator()
 				gain = audioContext.createGain()
@@ -202,8 +200,8 @@ play = ->
 				osc.connect gain
 				gain.connect audioContext.destination
 				# TODO: DRY
-				osc.frequency.setValueAtTime n1.fq(), time
-				osc.frequency.exponentialRampToValueAtTime n2.fq(), time + note_length
+				osc.frequency.setValueAtTime midi_to_freq(n1), time
+				osc.frequency.exponentialRampToValueAtTime midi_to_freq(n2), time + note_length
 				
 				osc.start time
 				gain.gain.cancelScheduledValues time
@@ -259,14 +257,12 @@ window.addEventListener "keydown", (e)->
 				return # don't prevent default
 	e.preventDefault()
 
-note_at = (y)->
-	scale_notes = scale.notes()
-	scale_notes[~~((1 - y / canvas.height) * scale_notes.length)]
+note_midi_at = (y)->
+	scale_note_midis[~~((1 - y / canvas.height) * scale_note_midis.length)]
 y_for_note_i = (i)->
-	(i + 0.5) / scale.notes().length * canvas.height
-y_for_note = (note)->
-	simple = scale.simple()
-	y_for_note_i(simple.length - 1 - (simple.indexOf(note.toString(true))))
+	(i + 0.5) / scale_notes.length * canvas.height
+y_for_note_midi = (note_midi)->
+	y_for_note_i(scale_note_midis.length - 1 - (scale_note_midis.indexOf(note_midi)))
 
 lerp = (v1, v2, x)->
 	v1 + (v2 - v1) * x
@@ -279,7 +275,7 @@ animate ->
 	ctx.save()
 	
 	ctx.beginPath()
-	for note, i in scale.notes()
+	for note, i in scale_notes
 		y = y_for_note_i i
 		ctx.moveTo 0, y
 		ctx.lineTo canvas.width, y
@@ -293,8 +289,8 @@ animate ->
 		i2 = i + 1
 		x1 = x_scale * i1
 		x2 = x_scale * i2
-		y1 = y_for_note position.n1
-		y2 = y_for_note position.n2
+		y1 = y_for_note_midi position.n1
+		y2 = y_for_note_midi position.n2
 		ctx.moveTo x1, y1
 		#ctx.bezierCurveTo lerp(x1, x2, 0.5), y1, lerp(x1, x2, 0.5), y2, x2, y2
 		ctx.lineTo x2, y2
@@ -316,9 +312,9 @@ animate ->
 		ctx.stroke()
 	
 	for pointerId, pointer of pointers
-		note_at_pointer_y = note_at pointer.y
-		if note_at_pointer_y
-			pointer.hover_y = y_for_note note_at_pointer_y
+		note_midi_at_pointer_y = note_midi_at pointer.y
+		if note_midi_at_pointer_y
+			pointer.hover_y = y_for_note_midi note_midi_at_pointer_y
 			pointer.hover_r = if pointer.down then 20 else 30
 			pointer.hover_y_lagged ?= pointer.hover_y
 			pointer.hover_y_lagged += (pointer.hover_y - pointer.hover_y_lagged) * 0.6
