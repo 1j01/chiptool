@@ -53,7 +53,6 @@ and didn't want to have to manually shift everything over in each pattern.
 boring todo:
 
 * right click to delete
-* adjust default glide to be more like 0.2s rather than the length of a note
 * import/export JSON
 * versioned and automatically upgraded format
 * playback control other than play/stop

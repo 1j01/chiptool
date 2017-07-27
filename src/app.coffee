@@ -28,13 +28,18 @@ LS_KEY = "chiptool song data"
 	JSON.stringify(song)
 
 @set_state = (song_json)->
+	# Performance: could do without JSON parsing and document validation for undo/redo
 	try
 		if song_json
 			data = JSON.parse(song_json)
 			if data
-				# TODO: validation
+				# TODO: recover from validation errors?
+				for position, index in data when position?
+					for note_prop in ["n1", "n2"]
+						if not Number.isInteger(position[note_prop])
+							console.error "At index #{index} in song, expected an integer for property `#{note_prop}`", position
+							return
 				@song = data
-				
 	catch err
 		console.warn err
 		# TODO: warn user
@@ -50,6 +55,7 @@ playing = no
 
 x_scale = 30 # pixels
 note_length = 0.5 # seconds
+glide_length = 0.2 # seconds
 
 pointers = {} # used for display
 pressed = {} # used for interaction
@@ -178,6 +184,7 @@ play = ->
 		if position
 			{n1, n2} = position
 			prev_position = song[i - 1]
+			
 			# TODO: allow explicit reactuation
 			if prev_position and prev_position.n2 is n1
 				{osc, gain} = playback[playback.length - 1]
@@ -188,10 +195,6 @@ play = ->
 				# fade it out later
 				gain.gain.exponentialRampToValueAtTime 0.01, time + 0.9
 				gain.gain.linearRampToValueAtTime 0.0001, time + 0.99
-				# bend the pitch
-				osc.frequency.setValueAtTime midi_to_freq(n1), time
-				# TODO: glide for less than note_length
-				osc.frequency.exponentialRampToValueAtTime midi_to_freq(n2), time + note_length
 			else
 				osc = audioContext.createOscillator()
 				gain = audioContext.createGain()
@@ -199,9 +202,6 @@ play = ->
 				osc.type = "triangle"
 				osc.connect gain
 				gain.connect audioContext.destination
-				# TODO: DRY
-				osc.frequency.setValueAtTime midi_to_freq(n1), time
-				osc.frequency.exponentialRampToValueAtTime midi_to_freq(n2), time + note_length
 				
 				osc.start time
 				gain.gain.cancelScheduledValues time
@@ -209,6 +209,9 @@ play = ->
 				gain.gain.exponentialRampToValueAtTime 0.1, time + 0.01
 				gain.gain.exponentialRampToValueAtTime 0.01, time + 0.9
 				gain.gain.linearRampToValueAtTime 0.0001, time + 0.99
+			
+			osc.frequency.setValueAtTime midi_to_freq(n1), time
+			osc.frequency.exponentialRampToValueAtTime midi_to_freq(n2), time + glide_length
 			
 			playback.push {osc, gain}
 		
@@ -293,6 +296,7 @@ animate ->
 		y2 = y_for_note_midi position.n2
 		ctx.moveTo x1, y1
 		#ctx.bezierCurveTo lerp(x1, x2, 0.5), y1, lerp(x1, x2, 0.5), y2, x2, y2
+		ctx.lineTo x1 + x_scale * glide_length, y2
 		ctx.lineTo x2, y2
 		#ctx.bezierCurveTo lerp(x1, x2, 0.3), y1, lerp(x1, x2, 0.4), y2, x2, y2
 		#ctx.bezierCurveTo lerp(x1, x2, 0.2), y1, lerp(x1, x2, 0.4), y2, x2, y2
