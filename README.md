@@ -54,7 +54,6 @@ boring todo:
 
 * right click to delete
 * import/export JSON
-* versioned and automatically upgraded format
 * playback control other than play/stop
 * update song during playback
 * multiple concurrent synths

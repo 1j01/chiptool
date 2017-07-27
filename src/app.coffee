@@ -11,8 +11,9 @@ audioContext = new AudioContext()
 #master.gain.value = 0
 #master.connect audioContext.destination
 
-# TODO: versioned document format
-@song = new Array 500
+FORMAT_VERSION = 0
+
+@song = {formatVersion: FORMAT_VERSION, noteData: []}
 
 LS_KEY = "chiptool song data"
 
@@ -33,12 +34,57 @@ LS_KEY = "chiptool song data"
 		if song_json
 			data = JSON.parse(song_json)
 			if data
+				if not Number.isInteger(data.formatVersion)
+					console.error "In the JSON data, expected a top level property `formatVersion` to hold an integer; is this a Chiptool song?", data
+					return
+				if data.formatVersion > FORMAT_VERSION
+					console.error "The song file appears to have been created with a later version of Chiptool; try refreshing to get the latest version."
+					return
+				if data.formatVersion < FORMAT_VERSION
+					
+					# upgrades can be done like so:
+					
+					# if data.formatVersion is 0
+					# 	console.log "Upgrading song file from format version #{data.formatVersion} to #{data.formatVersion + 1}"
+					# 	data.formatVersion += 1
+					# 	data.foo = data.bar
+					# 	delete data.bar
+					# 	return
+					
+					# they could also be moved into an array/map of format upgrades
+					
+					# for backwards compatible changes, the version number can simply be incremented
+					
+					# also, in Wavey, I've included undos and redos in the saved state and done this:
+					
+					# upgrade = (fn)->
+					# 	fn doc.state
+					# 	fn state for state in doc.undos
+					# 	fn state for state in doc.redos
+					
+					if data.formatVersion isnt FORMAT_VERSION
+						# this message is really verbose, but also not nearly as helpful as it could be
+						# this isn't even shown to the user yet
+						# and this app is very much pre-alpha; it's an experiment
+						# but this shows what kind of help could be given for this sort of scenario
+						console.error "The song file appears to have been created with an earlier version of Chiptool,
+							but there's no upgrade path from #{data.formatVersion} to #{FORMAT_VERSION}.
+							You could try refreshing the page in case an upgrade path has been established since whenever,
+							or you could look through the source history (https://github.com/1j01/chiptool)
+							to find a version capable of loading the file
+							and maybe use RawGit to get a URL for that version of the app"
+						return
+				if not Array.isArray(data.noteData)
+					console.error "In JSON data, expected a top level property `noteData` to hold an array.", data
+					return
 				# TODO: recover from validation errors?
 				for position, index in data when position?
 					for note_prop in ["n1", "n2"]
 						if not Number.isInteger(position[note_prop])
 							console.error "At index #{index} in song, expected an integer for property `#{note_prop}`", position
 							return
+				# TODO: check for unhandled keys?
+				# maybe have a more robust system with schemas?
 				@song = data
 	catch err
 		console.warn err
@@ -87,7 +133,7 @@ document.body.addEventListener "pointermove", (e)->
 			
 			if xi isnt last_xi
 				for _xi_ in [xi...last_xi]
-					song[_xi_] =
+					song.noteData[_xi_] =
 						n1: pointer.last_note_midi
 						n2: pointer.last_note_midi
 			
@@ -95,8 +141,8 @@ document.body.addEventListener "pointermove", (e)->
 				pointer.last_freq = new_freq
 				osc.frequency.value = new_freq
 				
-				if song[xi]
-					song[xi].n2 = note_midi_at_pointer_y
+				if song.noteData[xi]
+					song.noteData[xi].n2 = note_midi_at_pointer_y
 			
 			state_changed()
 			
@@ -113,7 +159,7 @@ document.body.addEventListener "pointerdown", (e)->
 	if note_midi_at_pointer_y
 		
 		undoable =>
-			song[x // x_scale] =
+			song.noteData[x // x_scale] =
 				n1: note_midi_at_pointer_y
 				n2: note_midi_at_pointer_y
 		
@@ -180,10 +226,10 @@ play = ->
 	time = playback_start_time = audioContext.currentTime
 	
 	playback = []
-	for position, i in song
+	for position, i in song.noteData
 		if position
 			{n1, n2} = position
-			prev_position = song[i - 1]
+			prev_position = song.noteData[i - 1]
 			
 			# TODO: allow explicit reactuation
 			if prev_position and prev_position.n2 is n1
@@ -287,7 +333,7 @@ animate ->
 	ctx.stroke()
 	
 	ctx.beginPath()
-	for position, i in song when position
+	for position, i in song.noteData when position
 		i1 = i + 0
 		i2 = i + 1
 		x1 = x_scale * i1
